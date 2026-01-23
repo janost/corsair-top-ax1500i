@@ -1,0 +1,10 @@
+[package]
+name = "corsair-top"
+version = "0.1.0"
+edition = "2021"
+description = "Real-time TUI monitor for Corsair AX1600i PSUs"
+
+[dependencies]
+rusb = "0.9"
+ratatui = "0.28"
+crossterm = "0.28"

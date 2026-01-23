@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=corsair-top
+Comment=Real-time TUI monitor for Corsair AX1600i PSUs
+Exec=/usr/local/bin/corsair-top-launch
+Icon=/usr/share/icons/hicolor/256x256/apps/corsair-top.png
+Terminal=true
+Type=Application
+Categories=System;Monitor;
+Keywords=corsair;psu;power;monitor;
