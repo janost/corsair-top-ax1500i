@@ -2,8 +2,6 @@
 
 Real-time TUI monitor for Corsair AX1600i power supplies.
 
-![corsair-top](logo/corsairtop.png)
-
 ![screenshot](images/screenshot.png)
 
 ## Features
