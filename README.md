@@ -2,7 +2,7 @@
 
 Real-time TUI monitor for the Corsair **AX1500i** power supply.
 
-This project is a hard fork of [rgilbreth/corsair-top](https://github.com/rgilbreth/corsair-top) (originally targeting the AX1600i) ported to the AX1500i. **It is AX1500i-only** and does not work on the AX1600i — the two PSUs share the "Corsair Link USB Dongle" branding but use different USB silicon, different wire framing, different transport, and a partly different register map. Restoring AX1600i support would require runtime model dispatch across all of those layers; if you need AX1600i, use the upstream project unmodified.
+This project is a hard fork of [thad0ctor/corsair-top](https://github.com/thad0ctor/corsair-top) (originally targeting the AX1600i) ported to the AX1500i. **It is AX1500i-only** and does not work on the AX1600i — the two PSUs share the "Corsair Link USB Dongle" branding but use different USB silicon, different wire framing, different transport, and a partly different register map. Restoring AX1600i support would require runtime model dispatch across all of those layers; if you need AX1600i, use the upstream project unmodified.
 
 The Rust crate name is still `corsair-top` (binary: `corsair-top`) for minimal diff against upstream — only the project / repo name and documentation reflect the AX1500i scope.
 
@@ -164,7 +164,7 @@ The output-power and efficiency calculations come straight from `cpsumon`'s AX15
 
 ## Acknowledgements
 
-- [`rgilbreth/corsair-top`](https://github.com/rgilbreth/corsair-top) — the original AX1600i TUI this fork is based on.
+- [`thad0ctor/corsair-top`](https://github.com/thad0ctor/corsair-top) — the original AX1600i TUI this fork is based on.
 - [`ka87/cpsumon`](https://github.com/ka87/cpsumon) — the only known-working open-source AX1500i implementation. Every protocol detail in this fork was reverse-engineered from cpsumon's source.
 - [bleepitybloopity AXi protocol writeup](https://bleepitybloopity.com/posts/corsairaxi/) — independent verification of the wire format.
 
