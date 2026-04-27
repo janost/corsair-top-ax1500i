@@ -1,50 +1,67 @@
+use std::io::{Read, Write};
 use std::sync::Mutex;
 use std::thread::sleep;
 use std::time::Duration;
-use rusb::{Context, Device, DeviceHandle, Error};
+
+use serialport::{ClearBuffer, SerialPort, TTYPort};
 
 pub struct ClaimedDevice {
-    handle: Mutex<DeviceHandle<Context>>,
-    interface: u8,
-    read_address: u8,
-    write_address: u8,
+    port: Mutex<TTYPort>,
+    path: String,
 }
 
 impl ClaimedDevice {
-    pub fn claim(device: Device<Context>, interface: u8) -> Result<ClaimedDevice, Error> {
-        let handle = device.open().expect("Failed open");
-        let read_address = 0x82;
-        let write_address = 0x02;
-        let _ = handle.detach_kernel_driver(interface);
-        handle.claim_interface(interface).expect("Claim interface failed");
-        handle.reset().expect("Reset device failed");
-        Ok(ClaimedDevice { handle: Mutex::new(handle), interface, read_address, write_address })
+    pub fn claim(path: &str) -> Result<ClaimedDevice, serialport::Error> {
+        let port = serialport::new(path, 115_200)
+            .data_bits(serialport::DataBits::Eight)
+            .stop_bits(serialport::StopBits::One)
+            .parity(serialport::Parity::None)
+            .flow_control(serialport::FlowControl::None)
+            .timeout(Duration::from_millis(50))
+            .open_native()?;
+        sleep(Duration::from_millis(100));
+        Ok(ClaimedDevice {
+            port: Mutex::new(port),
+            path: path.to_string(),
+        })
     }
 
-    pub fn write_control(&self) {
-        let locked_handle = self.handle.lock().unwrap();
-        locked_handle.write_control(0x40, 0x02, 0x0002, 0, &[], Self::get_timeout()).expect("Control failed");
+    pub fn path(&self) -> &str {
+        &self.path
     }
 
-    pub fn read_bulk(&self) -> Vec<u8> {
-        let mut resp: [u8; 4096] = [0; 4096];
-        let locked_handle = self.handle.lock().unwrap();
-        let result = locked_handle.read_bulk(self.read_address, &mut resp, Self::get_timeout()).unwrap();
-        return Vec::from(&resp[0..result]);
+    /// Drain any leftover input bytes — call before issuing a new request to
+    /// ensure responses don't get desynced from previous transactions.
+    pub fn drain_input(&self) {
+        let port = self.port.lock().unwrap();
+        let _ = port.clear(ClearBuffer::Input);
+    }
+
+    /// Read exactly `expected` bytes from the wire. Returns whatever bytes
+    /// were read (may be short on timeout). No trailer eating — leftover
+    /// bytes are flushed by `drain_input()` at the start of the next call.
+    pub fn read_exact_or_timeout(&self, expected: usize) -> Vec<u8> {
+        let mut port = self.port.lock().unwrap();
+        let mut out = Vec::with_capacity(expected);
+        let mut buf = [0u8; 256];
+        while out.len() < expected {
+            let want = (expected - out.len()).min(buf.len());
+            match port.read(&mut buf[..want]) {
+                Ok(0) => break,
+                Ok(n) => out.extend_from_slice(&buf[..n]),
+                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => break,
+                Err(_) => break,
+            }
+        }
+        out
     }
 
     pub fn write_bulk(&self, data: &[u8]) -> usize {
-        let locked_handle = self.handle.lock().unwrap();
-        sleep(Duration::from_millis(1));
-        return locked_handle.write_bulk(self.write_address, &data, Self::get_timeout()).unwrap();
-    }
-
-    fn get_timeout() -> Duration {
-        return Duration::from_secs(4);
+        let mut port = self.port.lock().unwrap();
+        port.write(data).unwrap_or(0)
     }
 
     pub fn release(&mut self) {
-        let locked_handle = self.handle.lock().unwrap();
-        locked_handle.release_interface(self.interface).expect("Release interface failed");
+        // Port is released when dropped.
     }
 }

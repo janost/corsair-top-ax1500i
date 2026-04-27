@@ -58,7 +58,7 @@ pub fn decode(msg: &[u8]) -> Vec<u8> {
     }
     let mut i = 1;
     let mut j = 0;
-    while i <= msg.len() {
+    while j < new_size {
         let a = *msg.get(i).unwrap_or(&0) as usize;
         let b = *msg.get(i + 1).unwrap_or(&0) as usize;
         result[j] = (DECODE_TABLE[a] & 0xf) | ((DECODE_TABLE[b] & 0xf) << 4);

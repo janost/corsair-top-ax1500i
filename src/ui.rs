@@ -25,8 +25,9 @@ pub fn draw(frame: &mut Frame, app: &App) {
 }
 
 fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
-    let total_power = app.total_power();
-    let total_12v = app.total_12v_power();
+    let total_in = app.total_power();
+    let total_out = app.total_output_power();
+    let total_eff = if total_in > 0.0 { (total_out / total_in) * 100.0 } else { 0.0 };
 
     let uptime = if !app.readings.is_empty() {
         app.readings[0].uptime_hours
@@ -34,27 +35,34 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
         0.0
     };
 
-    let mut header_text = format!(
-        " Total: {:.0}W (12V: {:.0}W)    Uptime: {:.2}h   ",
-        total_power, total_12v, uptime
-    );
+    let mut spans = vec![
+        Span::styled(" In ", Style::default().fg(Color::DarkGray)),
+        Span::styled(format!("{:.0}W", total_in), Style::default().fg(Color::Green).bold()),
+        Span::styled("   Out ", Style::default().fg(Color::DarkGray)),
+        Span::styled(format!("{:.0}W", total_out), Style::default().fg(Color::Cyan).bold()),
+        Span::styled("   Eff ", Style::default().fg(Color::DarkGray)),
+        Span::styled(format!("{:.1}%", total_eff), Style::default().fg(Color::Yellow).bold()),
+        Span::styled("   Uptime ", Style::default().fg(Color::DarkGray)),
+        Span::styled(format!("{:.2}h", uptime), Style::default().fg(Color::White)),
+    ];
 
     for (i, reading) in app.readings.iter().enumerate() {
-        header_text.push_str(&format!(" [PSU{}: {:.0}W]", i + 1, reading.input_power));
+        spans.push(Span::styled(
+            format!("   [PSU{}: {:.0}W→{:.0}W]", i + 1, reading.input_power, reading.output_power),
+            Style::default().fg(Color::DarkGray),
+        ));
     }
 
-    let header = Paragraph::new(Line::from(vec![
-        Span::styled(header_text, Style::default().fg(Color::White).bold()),
-    ]))
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan))
-            .title(Span::styled(
-                " corsair-top ",
-                Style::default().fg(Color::Cyan).bold(),
-            )),
-    );
+    let header = Paragraph::new(Line::from(spans))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan))
+                .title(Span::styled(
+                    " corsair-top ",
+                    Style::default().fg(Color::Cyan).bold(),
+                )),
+        );
 
     frame.render_widget(header, area);
 }
@@ -108,7 +116,7 @@ fn draw_single_psu(frame: &mut Frame, area: Rect, reading: &crate::driver::PsuRe
 
     // Layout inside PSU panel: input, rails, 12V pages, temp/fan, power graph, temp graph
     let panel_chunks = Layout::vertical([
-        Constraint::Length(5),            // input section
+        Constraint::Length(6),            // input section (V/I + In gauge + Out + info)
         Constraint::Length(5),            // rails section
         Constraint::Length(pages_height), // 12V pages (uniform across PSUs)
         Constraint::Length(2),            // temp and fan
@@ -135,37 +143,35 @@ fn draw_input_section(frame: &mut Frame, area: Rect, reading: &crate::driver::Ps
     let input_block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::DarkGray))
-        .title(Span::styled(" Input ", Style::default().fg(Color::Green)));
+        .title(Span::styled(" Input / Output ", Style::default().fg(Color::Green)));
 
     let inner = input_block.inner(area);
     frame.render_widget(input_block, area);
 
     let input_chunks = Layout::vertical([
-        Constraint::Length(1),
-        Constraint::Length(1),
-        Constraint::Length(1),
+        Constraint::Length(1), // V / I
+        Constraint::Length(1), // input W gauge
+        Constraint::Length(1), // output W
+        Constraint::Length(1), // efficiency / cable / fan mode
     ])
     .split(inner);
 
-    let voltage_line = Line::from(vec![
-        Span::styled("  Voltage ", Style::default().fg(Color::DarkGray)),
+    // Voltage and current on one line
+    let vi_line = Line::from(vec![
+        Span::styled("  V ", Style::default().fg(Color::DarkGray)),
         Span::styled(
             format!("{:>6.1}V", reading.input_voltage),
             Style::default().fg(Color::Green),
         ),
-    ]);
-    frame.render_widget(Paragraph::new(voltage_line), input_chunks[0]);
-
-    let current_line = Line::from(vec![
-        Span::styled("  Current ", Style::default().fg(Color::DarkGray)),
+        Span::styled("   I ", Style::default().fg(Color::DarkGray)),
         Span::styled(
             format!("{:>6.2}A", reading.input_current),
             Style::default().fg(Color::Green),
         ),
     ]);
-    frame.render_widget(Paragraph::new(current_line), input_chunks[1]);
+    frame.render_widget(Paragraph::new(vi_line), input_chunks[0]);
 
-    // Power with gauge
+    // Input power as gauge
     let power_color = if reading.input_power > 1200.0 {
         Color::Red
     } else if reading.input_power > 800.0 {
@@ -177,9 +183,42 @@ fn draw_input_section(frame: &mut Frame, area: Rect, reading: &crate::driver::Ps
     let gauge = Gauge::default()
         .gauge_style(Style::default().fg(power_color).bg(Color::DarkGray))
         .ratio(power_ratio)
-        .label(format!("  Power {:>6.0}W", reading.input_power));
+        .label(format!("  In  {:>6.0}W", reading.input_power));
+    frame.render_widget(gauge, input_chunks[1]);
 
-    frame.render_widget(gauge, input_chunks[2]);
+    // Output power line
+    let out_line = Line::from(vec![
+        Span::styled("  Out ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            format!("{:>6.0}W", reading.output_power),
+            Style::default().fg(Color::Cyan),
+        ),
+    ]);
+    frame.render_widget(Paragraph::new(out_line), input_chunks[2]);
+
+    // Efficiency / cable / fan mode all on one line
+    let eff_color = if reading.efficiency >= 90.0 {
+        Color::Green
+    } else if reading.efficiency >= 70.0 {
+        Color::Yellow
+    } else {
+        Color::DarkGray
+    };
+    let fan_mode_str = match reading.fan_mode {
+        crate::driver::psu::FanMode::Auto => "Auto",
+        crate::driver::psu::FanMode::Fixed => "Fixed",
+        crate::driver::psu::FanMode::Unknown => "?",
+    };
+    let cable_str = if reading.cable_type_20a { "20A" } else { "15A" };
+    let info_line = Line::from(vec![
+        Span::styled("  Eff ", Style::default().fg(Color::DarkGray)),
+        Span::styled(format!("{:>5.1}%", reading.efficiency), Style::default().fg(eff_color)),
+        Span::styled("  Cable ", Style::default().fg(Color::DarkGray)),
+        Span::styled(cable_str, Style::default().fg(Color::White)),
+        Span::styled("  Fan ", Style::default().fg(Color::DarkGray)),
+        Span::styled(fan_mode_str, Style::default().fg(Color::White)),
+    ]);
+    frame.render_widget(Paragraph::new(info_line), input_chunks[3]);
 }
 
 fn draw_rails_section(frame: &mut Frame, area: Rect, reading: &crate::driver::PsuReadings) {
@@ -425,14 +464,28 @@ fn draw_power_graph(frame: &mut Frame, area: Rect, app: &App) {
         .map(|(i, v)| (i as f64 - x_offset, *v))
         .collect();
 
+    let output_data: Vec<(f64, f64)> = app
+        .total_output_history
+        .iter()
+        .enumerate()
+        .map(|(i, v)| (i as f64 - x_offset, *v))
+        .collect();
+
     let x_max = x_len;
 
     let mut datasets = vec![
         Dataset::default()
+            .name("Input")
             .marker(symbols::Marker::Braille)
             .graph_type(GraphType::Line)
             .style(Style::default().fg(Color::Green))
             .data(&power_data),
+        Dataset::default()
+            .name("Output")
+            .marker(symbols::Marker::Braille)
+            .graph_type(GraphType::Line)
+            .style(Style::default().fg(Color::Cyan))
+            .data(&output_data),
     ];
 
     // Reference lines for AX1600i (scaled by PSU count)
@@ -483,7 +536,13 @@ fn draw_power_graph(frame: &mut Frame, area: Rect, app: &App) {
         ]
     };
 
-    let current_label = format!(" Total Power: {:.0}W ", app.total_power());
+    let total_in = app.total_power();
+    let total_out = app.total_output_power();
+    let total_eff = if total_in > 0.0 { (total_out / total_in) * 100.0 } else { 0.0 };
+    let current_label = format!(
+        " Total — In: {:.0}W   Out: {:.0}W   Eff: {:.1}% ",
+        total_in, total_out, total_eff
+    );
 
     let chart = Chart::new(datasets)
         .block(

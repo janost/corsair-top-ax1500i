@@ -6,6 +6,7 @@ pub struct App {
     pub temp_history: Vec<Vec<f64>>,
     pub fan_history: Vec<Vec<f64>>,
     pub total_power_history: Vec<f64>,
+    pub total_output_history: Vec<f64>,
     pub should_quit: bool,
     pub tick_count: u64,
     pub tick_rate_ms: u64,
@@ -22,6 +23,7 @@ impl App {
             temp_history: vec![Vec::with_capacity(HISTORY_LEN); num_psus],
             fan_history: vec![Vec::with_capacity(HISTORY_LEN); num_psus],
             total_power_history: Vec::with_capacity(HISTORY_LEN),
+            total_output_history: Vec::with_capacity(HISTORY_LEN),
             should_quit: false,
             tick_count: 0,
             tick_rate_ms: 1000,
@@ -63,10 +65,16 @@ impl App {
             }
         }
 
-        let total: f64 = readings.iter().map(|r| r.input_power).sum();
-        self.total_power_history.push(total);
+        let total_in: f64 = readings.iter().map(|r| r.input_power).sum();
+        self.total_power_history.push(total_in);
         if self.total_power_history.len() > HISTORY_LEN {
             self.total_power_history.remove(0);
+        }
+
+        let total_out: f64 = readings.iter().map(|r| r.output_power).sum();
+        self.total_output_history.push(total_out);
+        if self.total_output_history.len() > HISTORY_LEN {
+            self.total_output_history.remove(0);
         }
 
         self.readings = readings;
@@ -74,6 +82,10 @@ impl App {
 
     pub fn total_power(&self) -> f64 {
         self.readings.iter().map(|r| r.input_power).sum()
+    }
+
+    pub fn total_output_power(&self) -> f64 {
+        self.readings.iter().map(|r| r.output_power).sum()
     }
 
     pub fn total_12v_power(&self) -> f64 {
